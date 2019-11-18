@@ -23,14 +23,12 @@ with open("banner.txt", 'r') as banner:
 config = VariablesConfig(required_env_vars, optional_env_vars=optional_env_vars)
 if not config.validate():
     sys.exit(1)
-# referenceNumber = ""
+
 headers = {'content-type': 'text/xml; charset=utf-8','SOAPAction': 'http://edisoftwebservices.com/IPortalData/GetShipmentsByOrderNumber'}
-
-
 url="http://customer-api.consignorportal.com/PortalData/PortalData.svc"
 
 @app.route('/getShipment')
-def postrequest(): 
+def postrequest():  #This is not in use for now
     try:
         if request.args.get('ref') is None:
             logger.info("referenceNumber not found")
@@ -41,8 +39,6 @@ def postrequest():
     except Exception as e:
         logger.error(f"Issue: {e}")
 
-    #http://customer-api.consignorportal.com/PortalData/PortalData.svc?WSDL
-    #headers = {'content-type': 'application/soap+xml'}
     #a:Shipment
     r = requests.post(url,data=body,headers=headers)
     jsonString = json.dumps(xmltodict.parse(r.text, process_namespaces=True,  namespaces={'http://schemas.datacontract.org/2004/07/EdiSoft.Common.Domain.ExportDomain':None}), indent=4)
@@ -63,7 +59,7 @@ def postreceiver():
         entities = [entities]
     for entity in entities:
         try:
-            referenceNumber = entity['consignor-embedded:ref']
+            referenceNumber = entity['referenceNumber']
             logger.info(referenceNumber)
             body = f"""<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:edis="http://edisoftwebservices.com/" xmlns:arr="http://schemas.microsoft.com/2003/10/Serialization/Arrays">
             <soapenv:Header/>
@@ -85,26 +81,12 @@ def postreceiver():
             except:
                 logger.info("failure :(:(")
             return Response(json.dumps(rmparents), mimetype='application/json')
-
-    # result = json.dumps(rmparents)
         except:
             logger.info(entity)
-        # for k, v in entities.items():
-        #     if k == os.environ.get('ref', 'ref'):
-        #         logger.error("processing: " + v)
+
 
     return ""   
 
-    # for entity in entities:
-    #     for k,v in entity.items():
-    #         if k == os.environ.get('ref', 'ref'):
-    #             logger.info("processing: " + v)
-    #             r = requests.post(url,data=body,headers=headers)
-    #             jsonString = json.dumps(xmltodict.parse(r.text, process_namespaces=True,  namespaces={'http://schemas.datacontract.org/2004/07/EdiSoft.Common.Domain.ExportDomain':None}), indent=4)
-    #             jsonload = json.loads(jsonString)
-    #             rmparents = (jsonload['http://schemas.xmlsoap.org/soap/envelope/:Envelope']['http://schemas.xmlsoap.org/soap/envelope/:Body']['http://edisoftwebservices.com/:GetShipmentsByOrderNumberResponse']['http://edisoftwebservices.com/:GetShipmentsByOrderNumberResult']['Shipment'])
-
-    # return Response(json.dumps(rmparents),status=statuscode, mimetype='application/json')
 
 if __name__ == '__main__':
     format_string = '%(name)s - %(levelname)s - %(message)s'
