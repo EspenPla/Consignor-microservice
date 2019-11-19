@@ -27,33 +27,29 @@ if not config.validate():
 headers = {'content-type': 'text/xml; charset=utf-8','SOAPAction': 'http://edisoftwebservices.com/IPortalData/GetShipmentsByOrderNumber'}
 url="http://customer-api.consignorportal.com/PortalData/PortalData.svc"
 
-@app.route('/getShipment')
-def postrequest():  #This is not in use for now
+@app.route('/test', methods=[ "POST"])
+def postrequest():  
     try:
-        if request.args.get('ref') is None:
-            logger.info("referenceNumber not found")
-            referenceNumber = 12345
-        else:
-            referenceNumber = request.args.get("ref")
-            logger.info(f"referenceNumber {referenceNumber} is sent from Sesam")
-    except Exception as e:
-        logger.error(f"Issue: {e}")
-
-    #a:Shipment
-    r = requests.post(url,data=body,headers=headers)
-    jsonString = json.dumps(xmltodict.parse(r.text, process_namespaces=True,  namespaces={'http://schemas.datacontract.org/2004/07/EdiSoft.Common.Domain.ExportDomain':None}), indent=4)
-    jsonload = json.loads(jsonString)
-    rmparents = (jsonload['http://schemas.xmlsoap.org/soap/envelope/:Envelope']['http://schemas.xmlsoap.org/soap/envelope/:Body']['http://edisoftwebservices.com/:GetShipmentsByOrderNumberResponse']['http://edisoftwebservices.com/:GetShipmentsByOrderNumberResult']['Shipment'])
-
-    # result = json.dumps(rmparents)
-    return Response(json.dumps(rmparents), mimetype='application/json')
-
+        entities = request.get_json()
+        logger.info("Receiving entities")
+    
+        statuscode = None
+        if not isinstance(entities,list):
+            entities = [entities]
+        for entity in entities:
+            try:
+                referenceNumber = entity['referenceNumber']
+                logger.info("(test) fetching data from: " + str(referenceNumber))
+            except:
+                logger.info(entity)
+        return ""  
+    except Exception as e: 
+        logger.error(f"Something went wrong with the test: {e}")
 @app.route("/ref", methods=[ "POST"])
 def postreceiver():
     entities = request.get_json()
     logger.info("Receiving entities")
     
-    response_list = []
     statuscode = None
     if not isinstance(entities,list):
         entities = [entities]
