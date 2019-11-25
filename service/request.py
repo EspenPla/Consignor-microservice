@@ -81,7 +81,7 @@ def GetShipmentsByOrderNumber():
             <edis:referenceNumber>{referenceNumber}</edis:referenceNumber>
         </edis:GetShipmentsByOrderNumber>
     </soapenv:Body>
-</soapenv:Envelope>"""
+ </soapenv:Envelope>"""
             try: 
                 r = requests.post(url,data=body,headers=headers)
                 logger.info("\n" + body)
@@ -96,6 +96,66 @@ def GetShipmentsByOrderNumber():
             logger.info(entity)
     return ""   
 
+def GetShipmentsByDateRange(since=since): 
+    try:
+        headers = {'content-type': 'text/xml; charset=utf-8','SOAPAction': 'http://edisoftwebservices.com/IPortalData/GetShipmentsByDateRange'}
+        pageIndex = 0
+        totalCount = 0
+        # delta = datetime.now() - timedelta(minutes=5)
+        # since = delta.isoformat()
+        # since = "2019-11-21T11:33:00.000"
+        theend = datetime.now()
+        theend = theend.isoformat()
+        logger.info("since: " + since)
+        logger.info("end: " + theend)
+
+        try: 
+            while True:
+                body = f"""<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:edis="http://edisoftwebservices.com/" xmlns:arr="http://schemas.microsoft.com/2003/10/Serialization/Arrays">
+            <soapenv:Header/>
+            <soapenv:Body>
+                <edis:GetShipmentsByDateRange>
+                    <edis:userName>{config.username}</edis:userName>
+                    <edis:password>{config.password}</edis:password>
+                    <edis:startDateTime>{since}</edis:startDateTime>
+                    <edis:endDateTime>{theend}</edis:endDateTime>
+                    <edis:pageIndex>{pageIndex}</edis:pageIndex>
+                </edis:GetShipmentsByDateRange>
+            </soapenv:Body>
+        </soapenv:Envelope>"""
+                r = requests.post(url,data=body,headers=headers)
+                jsonString = json.dumps(xmltodict.parse(r.text, process_namespaces=True,  namespaces={'http://schemas.datacontract.org/2004/07/EdiSoft.Common.Domain.ExportDomain':None}), indent=4)
+                jsonload = json.loads(jsonString)
+                logger.info(f"GetShipmentsByDateRange request sent!\nstartDateTime: {since}\npageIndex: {pageIndex}")
+                pageIndex += 1
+                count = 0
+                try: 
+                    rmparents = (jsonload['http://schemas.xmlsoap.org/soap/envelope/:Envelope']['http://schemas.xmlsoap.org/soap/envelope/:Body']['http://edisoftwebservices.com/:GetShipmentsByDateRangeResponse']['http://edisoftwebservices.com/:GetShipmentsByDateRangeResult']['Shipment'])
+                    try:
+                        for item in rmparents:
+                            i = dict(item)
+                            i["_id"] = item["Number"] #not all events have the OrderNumber, to get all Events we´ll use the Barcode
+                            submitdate = item["SubmitDate"]
+                            i["_updated"] = submitdate[:-6]
+                            #to_transit_datetime(datetime.datetime.fromtimestamp(i[date] / 1e3))
+                            # i["last event"] = item["Events"]["Event"][-1]["ServerDate"]
+                            count += 1
+                            totalCount += 1
+                            yield(i)
+                        logger.info(f"Found {count} new shipments.")
+                    except:
+                        logger.error("the new events is missing either Barcode/ServerDate.")
+                except:
+                    break
+                    # logger.info("there is no new shipments")
+                
+        except:
+            logger.info("request failure :(:(")
+        logger.info(f"Found totally {totalCount} new shipments. Total pages: {pageIndex}")
+    except Exception as e:
+        logger.info(f"since value: {since}\n error: {e}")
+        logger.info(f"end value: {theend}\n error: {e}")
+
 def GetEvents(since=since):    
     try:
         headers = {'content-type': 'text/xml; charset=utf-8','SOAPAction': 'http://edisoftwebservices.com/IPortalData/GetEvents'}
@@ -109,7 +169,7 @@ def GetEvents(since=since):
             <edis:eventDateTimeEnd>9999-12-31T23:59:59</edis:eventDateTimeEnd>
         </edis:GetEvents>
     </soapenv:Body>
-</soapenv:Envelope>"""
+ </soapenv:Envelope>"""
         try: 
             r = requests.post(url,data=body,headers=headers)
             logger.info("\n" + body)
@@ -137,16 +197,24 @@ def GetEvents(since=since):
         logger.info(f"since value: {since}\n error: {e}")
 
 
-@app.route('/GetEvents')
-def entities():
+@app.route('/<method>')
+def entities(method):
     try: 
+        if (method == "GetShipmentsByDateRange"):
+            method = GetShipmentsByDateRange
+        elif (method == "GetEvents"): 
+            method = GetEvents
+        else:
+            logger.error(f"Method ({method}) not found!")
+            return (f"Method ({method}) not found!")
+
         if request.args.get('since') is None:
-            delta = datetime.utcnow() + timedelta(minutes=55) #Remember to set this to correct time. Suggestion: last 7 days
+            delta = datetime.now() - timedelta(days=1) #Decides how far back you´ll go if no since value is sent from sesam.
             since = delta.isoformat()
             logger.debug(f"since value set from ms(-1 week): {since}")
         else: 
             since = request.args.get('since')
-        return Response(stream_as_json(GetEvents(since)), mimetype='application/json')
+        return Response(stream_as_json(method(since)), mimetype='application/json')
     except Timeout as e:
         logger.error(f"Timeout issue while fetching entities {e}")
     except ConnectionError as e:
