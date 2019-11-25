@@ -3,3 +3,5 @@
 GetShipmentsByOrderNumber
 
 GetEvents
+
+GetShipmentsByDateRange
