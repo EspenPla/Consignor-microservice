@@ -4,23 +4,16 @@ import json
 import sys
 from flask import Flask, request, Response
 from requests.exceptions import Timeout
-from sesamutils import VariablesConfig
+from sesamutils import VariablesConfig, sesam_logger
 import logging
-import paste.translogger
 from datetime import datetime, timedelta
 import os
-import cherrypy
+from sesamutils.flask import serve
 
 app = Flask(__name__)
 
-logger = logging.getLogger("Consignor-Service")
-
 required_env_vars = ["username", "password"]
 optional_env_vars = [("LOG_LEVEL", "INFO")]
-
-with open("banner.txt", 'r') as banner:
-    for line in banner:
-        logger.error(repr(line))  
 
 config = VariablesConfig(required_env_vars, optional_env_vars=optional_env_vars)
 if not config.validate():
@@ -40,25 +33,6 @@ def stream_as_json(generator_function):
         yield json.dumps(item)
     yield ']'
 
-@app.route('/test', methods=["POST"])
-def postrequest():  
-    try:
-        entities = request.get_json()
-        logger.info("(test) Receiving entities")
-    
-
-        if not isinstance(entities,list):
-            entities = [entities]
-        for entity in entities:
-            try:
-                referenceNumber = entity['referenceNumber']
-                logger.info("(test) fetching data from: " + str(referenceNumber))
-            except:
-                logger.info(entity)
-        return ""  
-    except Exception as e: 
-        logger.error(f"Something went wrong with the test: {e}")
-
 @app.route("/GetShipmentsByOrderNumber", methods=["POST"])
 def GetShipmentsByOrderNumber():
     entities = request.get_json()
@@ -70,7 +44,7 @@ def GetShipmentsByOrderNumber():
     for entity in entities:
         try:
             referenceNumber = entity['referenceNumber']
-            logger.info(referenceNumber)
+            # logger.info(referenceNumber)
             headers = {'content-type': 'text/xml; charset=utf-8','SOAPAction': 'http://edisoftwebservices.com/IPortalData/GetShipmentsByOrderNumber'}
             body = f"""<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:edis="http://edisoftwebservices.com/" xmlns:arr="http://schemas.microsoft.com/2003/10/Serialization/Arrays">
     <soapenv:Header/>
@@ -84,13 +58,14 @@ def GetShipmentsByOrderNumber():
  </soapenv:Envelope>"""
             try: 
                 r = requests.post(url,data=body,headers=headers)
-                logger.info("\n" + body)
+                # logger.info("\n" + body)
                 jsonString = json.dumps(xmltodict.parse(r.text, process_namespaces=True,  namespaces={'http://schemas.datacontract.org/2004/07/EdiSoft.Common.Domain.ExportDomain':None}), indent=4)
                 jsonload = json.loads(jsonString)
                 rmparents = (jsonload['http://schemas.xmlsoap.org/soap/envelope/:Envelope']['http://schemas.xmlsoap.org/soap/envelope/:Body']['http://edisoftwebservices.com/:GetShipmentsByOrderNumberResponse']['http://edisoftwebservices.com/:GetShipmentsByOrderNumberResult']['Shipment'])
-                logger.info(rmparents)
-            except:
-                logger.error("failure :(:(")
+                # logger.info(rmparents)
+            except Exception as e :
+                logger.error("failure, error:")
+                logger.error(e)
             return Response(json.dumps(rmparents), mimetype='application/json')
         except:
             logger.info(entity)
@@ -172,7 +147,7 @@ def GetEvents(since=since):
  </soapenv:Envelope>"""
         try: 
             r = requests.post(url,data=body,headers=headers)
-            logger.info("\n" + body)
+            logger.info(f"Sending request...\n----------eventDateTimeStart: {since}")
             jsonString = json.dumps(xmltodict.parse(r.text, process_namespaces=True,  namespaces={'http://schemas.datacontract.org/2004/07/EdiSoft.Common.Domain.ExportDomain':None}), indent=4)
             jsonload = json.loads(jsonString)
             count = 0
@@ -223,30 +198,15 @@ def entities(method):
         logger.error(f"Issue while fetching entities: {e}")
 
 if __name__ == '__main__':
-    format_string = '%(name)s - %(levelname)s - %(message)s'
-    # Log to stdout, change to or add a (Rotating)FileHandler to log to a file
-    stdout_handler = logging.StreamHandler()
-    stdout_handler.setFormatter(logging.Formatter(format_string))
-    logger.addHandler(stdout_handler)
 
-    # Comment these two lines if you don't want access request logging
-    app.wsgi_app = paste.translogger.TransLogger(app.wsgi_app, logger_name=logger.name,
-                                                 setup_console_handler=False)
-    app.logger.addHandler(stdout_handler)
+    logger = sesam_logger('Consignor Service')
 
-    logger.propagate = False
-    log_level = logging.getLevelName(os.environ.get('LOG_LEVEL', 'INFO'))  # default log level = INFO
-    logger.setLevel(level=log_level)
-    cherrypy.tree.graft(app, '/')
-    # Set the configuration of the web server to production mode
-    cherrypy.config.update({
-        'environment': 'production',
-        'engine.autoreload_on': False,
-        'log.screen': True,
-        'server.socket_port': 5000,
-        'server.socket_host': '0.0.0.0'
-    })
+    with open("banner.txt", 'r', encoding='utf-8') as banner:
+        logger.info('Initialisation...  v.0.03\n\n' + banner.read() + '\n')
+    try:
+        logger.info("LOG_LEVEL = %s" % logger.level)
+    except: 
+        logger.error("Could not print log level")
 
-    # Start the CherryPy WSGI web server
-    cherrypy.engine.start()
-    cherrypy.engine.block()
+    logger.info("Starting Cherrypy...")
+    serve(app)
